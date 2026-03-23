@@ -99,7 +99,7 @@ interface JdRing { points: JdBoundaryPoint[]; type: string; }
 interface JdPolygon { rings: JdRing[]; }
 interface JdMeasurement { valueAsDouble: number; unit: string; }
 interface JdBoundary { multipolygons: JdPolygon[]; area?: JdMeasurement; active: boolean; }
-interface JdField { id: string; name: string; activeBoundary?: JdBoundary; links: JdLink[]; }
+interface JdField { id: string; name: string; activeBoundary?: JdBoundary; boundaries?: JdBoundary[]; links: JdLink[]; }
 
 async function fetchAllFieldsPaginated(accessToken: string, orgId: string): Promise<JdField[]> {
   const allFields: JdField[] = [];
@@ -336,13 +336,18 @@ Deno.serve(async (req: Request) => {
         let boundaryAreaUnit = null;
         let activeBoundary = false;
 
-        if (field.activeBoundary) {
-          boundaryGeojson = convertBoundaryToGeoJSON(field.activeBoundary);
-          if (field.activeBoundary.area) {
-            boundaryAreaValue = field.activeBoundary.area.valueAsDouble;
-            boundaryAreaUnit = field.activeBoundary.area.unit;
+        const boundary = field.activeBoundary
+          || (field.boundaries && field.boundaries.find((b: JdBoundary) => b.active))
+          || (field.boundaries && field.boundaries[0])
+          || null;
+
+        if (boundary) {
+          boundaryGeojson = convertBoundaryToGeoJSON(boundary);
+          if (boundary.area) {
+            boundaryAreaValue = boundary.area.valueAsDouble;
+            boundaryAreaUnit = boundary.area.unit;
           }
-          activeBoundary = field.activeBoundary.active !== false;
+          activeBoundary = boundary.active !== false;
         }
 
         if (!boundaryGeojson) {
