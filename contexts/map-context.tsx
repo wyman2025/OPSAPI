@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { fetchStoredFields, importFieldsWithBoundaries, importOperations } from '@/lib/john-deere-client';
-import type { StoredField } from '@/types/john-deere';
+import type { StoredField, StoredFieldOperation } from '@/types/john-deere';
 import type mapboxgl from 'mapbox-gl';
 
 interface MapContextType {
@@ -26,6 +26,10 @@ interface MapContextType {
   // Selection
   selectedFieldId: string | null;
   setSelectedFieldId: (id: string | null) => void;
+
+  // Operation overlay
+  selectedOperation: StoredFieldOperation | null;
+  setSelectedOperation: (op: StoredFieldOperation | null) => void;
 
   // Filters
   selectedClient: string | null;
@@ -51,6 +55,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
   const [isImporting, setIsImporting] = useState(false);
   const [isSyncingOps, setIsSyncingOps] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [selectedOperation, setSelectedOperation] = useState<StoredFieldOperation | null>(null);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [selectedFarm, setSelectedFarm] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -104,6 +109,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setSelectedClient(null);
     setSelectedFarm(null);
+    setSelectedOperation(null);
   }, [orgId]);
 
   const filteredFields = useMemo(() => {
@@ -127,6 +133,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
       syncOperations,
       selectedFieldId,
       setSelectedFieldId,
+      selectedOperation,
+      setSelectedOperation,
       selectedClient,
       setSelectedClient,
       selectedFarm,

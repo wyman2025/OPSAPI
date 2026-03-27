@@ -5,17 +5,20 @@ import { useRouter } from 'next/navigation';
 import mapboxgl from 'mapbox-gl';
 import { useMapContext } from '@/contexts/map-context';
 import { useAuth } from '@/contexts/auth-context';
+import { supabase } from '@/lib/supabase';
 import { formatArea } from '@/lib/area-utils';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 const SOURCE_ID = 'fields-source';
 const FILL_LAYER_ID = 'fields-fill';
 const LINE_LAYER_ID = 'fields-line';
+const OP_IMAGE_SOURCE = 'op-image-source';
+const OP_IMAGE_LAYER = 'op-image-layer';
 
 export function FullMap() {
   const router = useRouter();
   const { johnDeereConnection } = useAuth();
-  const { filteredFields, selectedFieldId, setMapInstance } = useMapContext();
+  const { filteredFields, selectedFieldId, setMapInstance, selectedOperation } = useMapContext();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -217,6 +220,71 @@ export function FullMap() {
       });
     }
   }, [selectedFieldId, filteredFields, mapReady]);
+
+  // Operation image overlay
+  const overlayUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    // Clean up previous overlay
+    if (map.getLayer(OP_IMAGE_LAYER)) map.removeLayer(OP_IMAGE_LAYER);
+    if (map.getSource(OP_IMAGE_SOURCE)) map.removeSource(OP_IMAGE_SOURCE);
+    if (overlayUrlRef.current) {
+      URL.revokeObjectURL(overlayUrlRef.current);
+      overlayUrlRef.current = null;
+    }
+
+    if (!selectedOperation?.map_image_path || !selectedOperation?.map_image_extent) return;
+
+    const extent = selectedOperation.map_image_extent;
+    const imagePath = selectedOperation.map_image_path;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { data: blob } = await supabase.storage
+          .from('operation-images')
+          .download(imagePath);
+        if (!blob || cancelled) return;
+
+        const objectUrl = URL.createObjectURL(blob);
+        if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
+        overlayUrlRef.current = objectUrl;
+
+        // Mapbox image source coordinates: [topLeft, topRight, bottomRight, bottomLeft]
+        const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
+          [extent.minimumLongitude, extent.maximumLatitude],   // top-left
+          [extent.maximumLongitude, extent.maximumLatitude],   // top-right
+          [extent.maximumLongitude, extent.minimumLatitude],   // bottom-right
+          [extent.minimumLongitude, extent.minimumLatitude],   // bottom-left
+        ];
+
+        map.addSource(OP_IMAGE_SOURCE, {
+          type: 'image',
+          url: objectUrl,
+          coordinates,
+        });
+
+        // Insert below the field line layer so boundaries stay visible
+        map.addLayer({
+          id: OP_IMAGE_LAYER,
+          type: 'raster',
+          source: OP_IMAGE_SOURCE,
+          paint: {
+            'raster-opacity': 0.85,
+            'raster-fade-duration': 300,
+          },
+        }, FILL_LAYER_ID);
+      } catch {
+        // Image download failed silently — overlay just won't show
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOperation, mapReady]);
 
   if (!MAPBOX_TOKEN) {
     return (
