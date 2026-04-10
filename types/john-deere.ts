@@ -154,6 +154,16 @@ export interface FieldBoundary {
   geojson: GeoJSON.MultiPolygon | null;
 }
 
+export interface Owner {
+  id: string;
+  user_id: string;
+  org_id: string;
+  name: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FieldOwnerBoundary {
   id: string;
   user_id: string;

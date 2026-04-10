@@ -2,17 +2,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { optionsResponse, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getAuthenticatedUser, isResponse } from "../_shared/auth.ts";
 import {
-  getValidToken,
   getUserConnection,
 } from "../_shared/john-deere.ts";
 import {
   convertBoundaryToGeoJSON,
   JdBoundary,
 } from "../_shared/boundaries.ts";
-
-// --- Boundary assignment handler ---
-// Fetches all boundaries for a field (active + inactive) and allows assigning
-// an inactive boundary to a specific owner for financial analysis purposes.
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -37,7 +32,61 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
 
-    // Get all boundaries (active + inactive) for a field
+    // ── Owner CRUD ────────────────────────────────────────────────────────────
+
+    if (action === "get-owners") {
+      const { data, error } = await supabase
+        .from("owners")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("org_id", orgId)
+        .order("name");
+      if (error) return errorResponse(error.message, 500);
+      return jsonResponse({ owners: data || [] });
+    }
+
+    if (action === "create-owner" && req.method === "POST") {
+      const body = await req.json();
+      const { name, notes } = body;
+      if (!name?.trim()) return errorResponse("Owner name is required", 400);
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("owners")
+        .insert({ user_id: user.id, org_id: orgId, name: name.trim(), notes: notes || null, created_at: now, updated_at: now })
+        .select()
+        .maybeSingle();
+      if (error) return errorResponse(error.message, 500);
+      return jsonResponse({ owner: data });
+    }
+
+    if (action === "update-owner" && req.method === "POST") {
+      const body = await req.json();
+      const { ownerId, name, notes } = body;
+      if (!ownerId) return errorResponse("Missing ownerId", 400);
+      if (!name?.trim()) return errorResponse("Owner name is required", 400);
+      const { data, error } = await supabase
+        .from("owners")
+        .update({ name: name.trim(), notes: notes ?? null, updated_at: new Date().toISOString() })
+        .eq("id", ownerId)
+        .eq("user_id", user.id)
+        .select()
+        .maybeSingle();
+      if (error) return errorResponse(error.message, 500);
+      return jsonResponse({ owner: data });
+    }
+
+    if (action === "delete-owner" && req.method === "POST") {
+      const body = await req.json();
+      const { ownerId } = body;
+      if (!ownerId) return errorResponse("Missing ownerId", 400);
+      await supabase.from("field_owner_boundaries").delete().eq("owner_id", ownerId).eq("user_id", user.id);
+      const { error } = await supabase.from("owners").delete().eq("id", ownerId).eq("user_id", user.id);
+      if (error) return errorResponse(error.message, 500);
+      return jsonResponse({ success: true });
+    }
+
+    // ── Boundaries ────────────────────────────────────────────────────────────
+
     if (action === "get-boundaries") {
       const fieldId = url.searchParams.get("fieldId");
       if (!fieldId) return errorResponse("Missing fieldId", 400);
@@ -63,7 +112,8 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ boundaries, fieldDbId: storedField.id });
     }
 
-    // Assign a boundary to an owner (by updating field_owner_boundaries table)
+    // ── Owner Boundary Assignments ────────────────────────────────────────────
+
     if (action === "assign-boundary" && req.method === "POST") {
       const body = await req.json();
       const { fieldId, boundaryId, ownerId, ownerName, boundaryGeojson, areaValue, areaUnit } = body;
@@ -101,7 +151,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true, data });
     }
 
-    // Get all owner boundary assignments for a field
     if (action === "get-owner-boundaries") {
       const fieldId = url.searchParams.get("fieldId");
       if (!fieldId) return errorResponse("Missing fieldId", 400);
@@ -116,7 +165,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ownerBoundaries: data || [] });
     }
 
-    // Delete an owner boundary assignment
     if (action === "remove-owner-boundary" && req.method === "POST") {
       const body = await req.json();
       const { fieldId, ownerId } = body;
@@ -142,7 +190,6 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
-    // Get all owner boundary assignments for the org (for financial overview)
     if (action === "get-all-owner-boundaries") {
       const { data, error } = await supabase
         .from("field_owner_boundaries")

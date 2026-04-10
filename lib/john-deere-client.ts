@@ -182,6 +182,58 @@ export async function fetchStoredFields() {
   return response.json();
 }
 
+export async function fetchOwners() {
+  const headers = await getAuthHeaders();
+  const response = await fetch(
+    `${SUPABASE_URL}/functions/v1/john-deere-irrigation?action=get-owners`,
+    { headers },
+  );
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch owners');
+  }
+  return response.json();
+}
+
+export async function createOwner(name: string, notes?: string) {
+  const headers = await getAuthHeaders();
+  const response = await fetch(
+    `${SUPABASE_URL}/functions/v1/john-deere-irrigation?action=create-owner`,
+    { method: 'POST', headers, body: JSON.stringify({ name, notes }) },
+  );
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create owner');
+  }
+  return response.json();
+}
+
+export async function updateOwner(ownerId: string, name: string, notes?: string) {
+  const headers = await getAuthHeaders();
+  const response = await fetch(
+    `${SUPABASE_URL}/functions/v1/john-deere-irrigation?action=update-owner`,
+    { method: 'POST', headers, body: JSON.stringify({ ownerId, name, notes }) },
+  );
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update owner');
+  }
+  return response.json();
+}
+
+export async function deleteOwner(ownerId: string) {
+  const headers = await getAuthHeaders();
+  const response = await fetch(
+    `${SUPABASE_URL}/functions/v1/john-deere-irrigation?action=delete-owner`,
+    { method: 'POST', headers, body: JSON.stringify({ ownerId }) },
+  );
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete owner');
+  }
+  return response.json();
+}
+
 export async function fetchFieldBoundaries(fieldId: string) {
   const headers = await getAuthHeaders();
   const response = await fetch(
