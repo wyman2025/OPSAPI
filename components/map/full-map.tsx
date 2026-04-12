@@ -12,6 +12,9 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 const SOURCE_ID = 'fields-source';
 const FILL_LAYER_ID = 'fields-fill';
 const LINE_LAYER_ID = 'fields-line';
+const IRRIGATED_SOURCE_ID = 'irrigated-fields-source';
+const IRRIGATED_FILL_LAYER_ID = 'irrigated-fields-fill';
+const IRRIGATED_LINE_LAYER_ID = 'irrigated-fields-line';
 const OP_IMAGE_SOURCE = 'op-image-source';
 const OP_IMAGE_LAYER = 'op-image-layer';
 
@@ -65,9 +68,11 @@ export function FullMap() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    [LINE_LAYER_ID, FILL_LAYER_ID].forEach(id => {
+    // Clean up existing layers
+    [IRRIGATED_LINE_LAYER_ID, IRRIGATED_FILL_LAYER_ID, LINE_LAYER_ID, FILL_LAYER_ID].forEach(id => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
+    if (map.getSource(IRRIGATED_SOURCE_ID)) map.removeSource(IRRIGATED_SOURCE_ID);
     if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
 
     const fieldsWithBoundaries = filteredFields.filter(f => f.boundary_geojson);
@@ -95,6 +100,7 @@ export function FullMap() {
 
     map.addSource(SOURCE_ID, { type: 'geojson', data: featureCollection, generateId: true });
 
+    // Base fill layer
     map.addLayer({
       id: FILL_LAYER_ID,
       type: 'fill',
@@ -110,6 +116,7 @@ export function FullMap() {
       },
     });
 
+    // Base line layer
     map.addLayer({
       id: LINE_LAYER_ID,
       type: 'line',
@@ -130,6 +137,55 @@ export function FullMap() {
       },
     });
 
+    // Irrigated boundary layers
+    const fieldsWithIrrigated = filteredFields.filter(f => f.irrigated_boundary_geojson);
+    if (fieldsWithIrrigated.length > 0) {
+      const irrigatedFeatures = fieldsWithIrrigated.map(field => ({
+        type: 'Feature' as const,
+        properties: {
+          name: field.name,
+          jd_field_id: field.jd_field_id,
+          is_selected: field.jd_field_id === selectedFieldId ? 'true' : 'false',
+        },
+        geometry: field.irrigated_boundary_geojson!,
+      }));
+
+      map.addSource(IRRIGATED_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: irrigatedFeatures },
+      });
+
+      map.addLayer({
+        id: IRRIGATED_FILL_LAYER_ID,
+        type: 'fill',
+        source: IRRIGATED_SOURCE_ID,
+        paint: {
+          'fill-color': '#06b6d4',
+          'fill-opacity': [
+            'case',
+            ['==', ['get', 'is_selected'], 'true'], 0.3,
+            0.15,
+          ],
+        },
+      });
+
+      map.addLayer({
+        id: IRRIGATED_LINE_LAYER_ID,
+        type: 'line',
+        source: IRRIGATED_SOURCE_ID,
+        paint: {
+          'line-color': '#22d3ee',
+          'line-width': [
+            'case',
+            ['==', ['get', 'is_selected'], 'true'], 2.5,
+            1.5,
+          ],
+          'line-opacity': 0.9,
+          'line-dasharray': [4, 3],
+        },
+      });
+    }
+
     // Fit bounds
     const bounds = new mapboxgl.LngLatBounds();
     for (const field of fieldsWithBoundaries) {
@@ -142,10 +198,21 @@ export function FullMap() {
         }
       }
     }
+    for (const field of fieldsWithIrrigated) {
+      const geojson = field.irrigated_boundary_geojson!;
+      for (const polygon of geojson.coordinates) {
+        for (const ring of polygon) {
+          for (const coord of ring) {
+            bounds.extend(coord as [number, number]);
+          }
+        }
+      }
+    }
     if (!bounds.isEmpty()) {
       map.fitBounds(bounds, { padding: 80, maxZoom: 15 });
     }
 
+    // Hover interactions
     let hoveredFeatureId: string | number | undefined;
 
     const handleMouseEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
@@ -167,6 +234,7 @@ export function FullMap() {
       }
     };
 
+    // Click → navigate to field detail
     const handleClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.GeoJSONFeature[] }) => {
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties;
@@ -222,6 +290,7 @@ export function FullMap() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
+    // Clean up previous overlay
     if (map.getLayer(OP_IMAGE_LAYER)) map.removeLayer(OP_IMAGE_LAYER);
     if (map.getSource(OP_IMAGE_SOURCE)) map.removeSource(OP_IMAGE_SOURCE);
     if (overlayUrlRef.current) {
@@ -246,11 +315,12 @@ export function FullMap() {
         if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
         overlayUrlRef.current = objectUrl;
 
+        // Mapbox image source coordinates: [topLeft, topRight, bottomRight, bottomLeft]
         const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
-          [extent.minimumLongitude, extent.maximumLatitude],
-          [extent.maximumLongitude, extent.maximumLatitude],
-          [extent.maximumLongitude, extent.minimumLatitude],
-          [extent.minimumLongitude, extent.minimumLatitude],
+          [extent.minimumLongitude, extent.maximumLatitude],   // top-left
+          [extent.maximumLongitude, extent.maximumLatitude],   // top-right
+          [extent.maximumLongitude, extent.minimumLatitude],   // bottom-right
+          [extent.minimumLongitude, extent.minimumLatitude],   // bottom-left
         ];
 
         map.addSource(OP_IMAGE_SOURCE, {
@@ -259,6 +329,7 @@ export function FullMap() {
           coordinates,
         });
 
+        // Insert below the field line layer so boundaries stay visible
         map.addLayer({
           id: OP_IMAGE_LAYER,
           type: 'raster',
@@ -269,7 +340,7 @@ export function FullMap() {
           },
         }, FILL_LAYER_ID);
       } catch {
-        // Image download failed silently
+        // Image download failed silently — overlay just won't show
       }
     })();
 

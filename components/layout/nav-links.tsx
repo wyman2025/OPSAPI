@@ -2,13 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Map, Grid3x3 as Grid3X3, ChartBar as BarChart3, Users } from 'lucide-react';
+import { Map, Grid3X3, BarChart3 } from 'lucide-react';
 
 const links = [
   { href: '/map', label: 'Map', icon: Map },
   { href: '/fields', label: 'Fields', icon: Grid3X3 },
   { href: '/operations', label: 'Operations', icon: BarChart3 },
-  { href: '/ownership', label: 'Ownership', icon: Users },
 ];
 
 export function NavLinks() {

@@ -39,6 +39,26 @@ async function fetchAllFieldsPaginated(accessToken: string, orgId: string): Prom
   return allFields;
 }
 
+async function fetchIrrigatedBoundary(
+  accessToken: string,
+  orgId: string,
+  fieldId: string,
+): Promise<JdBoundary | null> {
+  try {
+    const response = await callJohnDeereApi(
+      accessToken,
+      `/organizations/${orgId}/fields/${fieldId}/boundaries?recordFilter=all`,
+    );
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const boundaries: JdBoundary[] = data.values || [];
+    return boundaries.find((b) => b.irrigated === true) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function importFields(
   supabase: SupabaseClient,
   accessToken: string,
@@ -70,6 +90,21 @@ async function importFields(
 
     if (!boundaryGeojson) {
       withoutBoundaries++;
+    }
+
+    let irrigatedBoundaryGeojson = null;
+    let irrigatedBoundaryAreaValue = null;
+    let irrigatedBoundaryAreaUnit = null;
+    let hasIrrigatedBoundary = false;
+
+    const irrigatedBoundary = await fetchIrrigatedBoundary(accessToken, orgId, field.id);
+    if (irrigatedBoundary) {
+      irrigatedBoundaryGeojson = convertBoundaryToGeoJSON(irrigatedBoundary);
+      if (irrigatedBoundary.area) {
+        irrigatedBoundaryAreaValue = irrigatedBoundary.area.valueAsDouble;
+        irrigatedBoundaryAreaUnit = irrigatedBoundary.area.unit;
+      }
+      hasIrrigatedBoundary = !!irrigatedBoundaryGeojson;
     }
 
     let clientName: string | null = null;
@@ -131,6 +166,10 @@ async function importFields(
         boundary_area_value: boundaryAreaValue,
         boundary_area_unit: boundaryAreaUnit,
         active_boundary: activeBoundary,
+        irrigated_boundary_geojson: irrigatedBoundaryGeojson,
+        irrigated_boundary_area_value: irrigatedBoundaryAreaValue,
+        irrigated_boundary_area_unit: irrigatedBoundaryAreaUnit,
+        has_irrigated_boundary: hasIrrigatedBoundary,
         client_name: clientName,
         client_id: clientId,
         farm_name: farmName,
@@ -158,6 +197,7 @@ interface JdOperation {
   links?: JdLink[];
 }
 
+// Map operation type to the primary measurement type name
 const MEASUREMENT_TYPE_MAP: Record<string, string> = {
   harvest: "HarvestYieldResult",
   seeding: "SeedingRateResult",
@@ -251,6 +291,7 @@ async function fetchAndStoreMapImage(
 
     if (!imageDataUri) return {};
 
+    // Strip data URI prefix and decode base64 to bytes
     const base64Data = imageDataUri.replace(/^data:image\/png;base64,/, "");
     const binaryString = atob(base64Data);
     const bytes = new Uint8Array(binaryString.length);
@@ -258,6 +299,7 @@ async function fetchAndStoreMapImage(
       bytes[i] = binaryString.charCodeAt(i);
     }
 
+    // Upload to Supabase Storage
     const storagePath = `${userId}/${operationId}.png`;
     const { error: uploadError } = await supabase.storage
       .from("operation-images")
@@ -288,6 +330,7 @@ async function importOperations(
   userId: string,
   orgId: string,
 ) {
+  // Get all fields for this org
   const { data: fields } = await supabase
     .from("fields")
     .select("jd_field_id, name")
@@ -317,7 +360,10 @@ async function importOperations(
         for (const op of operations) {
           const opTypeStr = op.fieldOperationType || opType.toLowerCase();
 
+          // Fetch measurement data (area, yield, moisture) for all operation types
           const measurements = await fetchMeasurementData(accessToken, op.id, opTypeStr);
+
+          // Fetch and store map image
           const imageData = await fetchAndStoreMapImage(supabase, accessToken, userId, op.id, opTypeStr);
 
           const firstVariety = op.varieties?.[0];
@@ -384,6 +430,7 @@ Deno.serve(async (req: Request) => {
     const action = url.searchParams.get("action");
 
     if (action === "import-fields") {
+      // Import fields, then automatically import operations
       const fieldResult = await importFields(supabase, accessToken, user.id, orgId);
 
       console.log(`[import] Imported ${fieldResult.totalImported} fields, now importing operations...`);

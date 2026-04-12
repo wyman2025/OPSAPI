@@ -36,6 +36,7 @@ export interface JohnDeereBoundary {
   workableArea?: JohnDeereMeasurement;
   multipolygons: JohnDeerePolygon[];
   active: boolean;
+  irrigated?: boolean;
   links: JohnDeereLink[];
 }
 
@@ -93,6 +94,10 @@ export interface StoredField {
   boundary_area_value: number | null;
   boundary_area_unit: string | null;
   active_boundary: boolean;
+  irrigated_boundary_geojson: GeoJSON.MultiPolygon | null;
+  irrigated_boundary_area_value: number | null;
+  irrigated_boundary_area_unit: string | null;
+  has_irrigated_boundary: boolean;
   client_name: string | null;
   client_id: string | null;
   farm_name: string | null;
@@ -146,48 +151,26 @@ export interface JohnDeereTokenResponse {
   scope: string;
 }
 
-export interface FieldBoundary {
-  id: string;
-  name: string | null;
-  active: boolean;
-  area: { valueAsDouble: number; unit: string } | null;
-  geojson: GeoJSON.MultiPolygon | null;
-}
-
-export interface Owner {
-  id: string;
-  user_id: string;
-  org_id: string;
-  name: string;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface IrrigationAnalysis {
   fieldId: string;
   fieldName: string;
-  totalArea: number;
-  totalAreaUnit: string;
-  irrigatedArea: number | null;
-  irrigatedAreaUnit: string | null;
-  drylandArea: number | null;
-  irrigatedPercent: number | null;
-  drylandPercent: number | null;
-  hasIrrigatedBoundary: boolean;
+  boundaryId: string;
+  irrigated: boolean;
+  totalArea: { value: number; unit: string };
+  workableArea: { value: number; unit: string };
+  irrigatedAcres: number;
+  drylandAcres: number;
+  exteriorGeoJSON: GeoJSON.MultiPolygon | null;
+  irrigatedBoundaryGeoJSON: GeoJSON.MultiPolygon | null;
 }
 
-export interface FieldOwnerBoundary {
-  id: string;
-  user_id: string;
-  field_id: string;
-  jd_field_id: string;
-  jd_boundary_id: string;
-  owner_id: string;
-  owner_name: string | null;
-  boundary_geojson: GeoJSON.MultiPolygon | null;
-  area_value: number | null;
-  area_unit: string | null;
-  created_at: string;
-  updated_at: string;
+export interface HarvestIrrigationAnalysis extends IrrigationAnalysis {
+  operationId: string;
+  harvestPolygons: GeoJSON.FeatureCollection | null;
+  irrigatedHarvestedAcres: number;
+  drylandHarvestedAcres: number;
+  irrigatedAvgYield: number | null;
+  drylandAvgYield: number | null;
+  irrigatedAvgMoisture: number | null;
+  drylandAvgMoisture: number | null;
 }

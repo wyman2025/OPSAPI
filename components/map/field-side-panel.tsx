@@ -7,7 +7,7 @@ import { useMapContext } from '@/contexts/map-context';
 import { useAuth } from '@/contexts/auth-context';
 import { fetchStoredOperations } from '@/lib/john-deere-client';
 import { formatArea } from '@/lib/area-utils';
-import { X, MapPin, Wheat, Sprout, Droplets, ArrowRight, Loader as Loader2, Map as MapIcon, Users } from 'lucide-react';
+import { X, MapPin, Wheat, Sprout, Droplets, ArrowRight, Loader2, Map as MapIcon } from 'lucide-react';
 import type { StoredFieldOperation } from '@/types/john-deere';
 
 export function FieldSidePanel() {
@@ -73,6 +73,12 @@ export function FieldSidePanel() {
                       {formatArea(field.boundary_area_value, field.boundary_area_unit, preferredUnit)}
                     </span>
                   )}
+                  {field.has_irrigated_boundary && field.irrigated_boundary_area_value && (
+                    <span className="flex items-center gap-1 text-sm font-mono-data text-cyan-400">
+                      <Droplets className="w-3.5 h-3.5" />
+                      {formatArea(field.irrigated_boundary_area_value, field.irrigated_boundary_area_unit, preferredUnit)} irrigated
+                    </span>
+                  )}
                 </div>
               </div>
               <button
@@ -95,6 +101,12 @@ export function FieldSidePanel() {
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                   {field.farm_name}
+                </span>
+              )}
+              {field.has_irrigated_boundary && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                  Irrigated
                 </span>
               )}
             </div>
